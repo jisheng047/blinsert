@@ -331,13 +331,17 @@ def pcn_detect(img, nets):
         winlist = smooth_window(winlist)
     return trans_window(img, imgPad, winlist)
 
-def draw_rpn(img, regions, regions_index):
-    font = cv2.FONT_HERSHEY_SIMPLEX
-    for index in range(len(regions)):
-        if regions_index[index] != False: # Get region coordinate - not false
-            rect_x, rect_y, rect_w, rect_h = regions[index]['rect']
-            cv2.rectangle(img, (rect_x, rect_y), (rect_x + rect_w, rect_y + rect_h), (0,255,0), 2)
-            cv2.putText(img,str(regions_index[index]) ,(rect_x, rect_y), font, 1, (0,0,255), 1, cv2.LINE_AA)
+def draw_rpn(img, regions_index):
+    regions_index = list(filter(lambda distance: distance != False, regions_index))
+    min_distance = min(regions_index, key = lambda t: t[1])
+    print(min_distance)
+    rect_x, rect_y, rect_w, rect_h = min_distance[0] # Get coordinate
+    cv2.rectangle(img, (rect_x, rect_y), (rect_x + rect_w, rect_y + rect_h), (0,255,0), 2)
+         
+    # for index in range(len(regions_index)):
+    #     rect_x, rect_y, rect_w, rect_h = regions_index[index][0] # Get coordinate
+    #     cv2.rectangle(img, (rect_x, rect_y), (rect_x + rect_w, rect_y + rect_h), (0,255,0), 2)
+         
 def get_ms_type(img):
     width, height, depth = img.shape
     type_check = 1 if width >= height else 2
@@ -410,7 +414,7 @@ def check_collide(head, region, distance):
         if (left > 0 or right < 0 or top < 0 or bottom > 0): # and (distance_tmp <= distance):
             print("Distance tmp : {0}".format(distance_tmp))
             # return region, distance_tmp # Get region
-            return int(distance_tmp) 
+            return region ,int(distance_tmp) 
         else:
             return False  # Not get False
 
@@ -464,7 +468,7 @@ if __name__ == '__main__':
     regions_index = swept_aabb(lst_head, regions[:2000], distance)
     # print(regions[:10])
     # Draw ss
-    draw_rpn(img, regions[:2000], regions_index)
+    draw_rpn(img, regions_index)
 
     # Show image
     cv2.imshow("pytorch-PCN", img)
