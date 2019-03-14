@@ -7,6 +7,7 @@ import selectivesearch
 from models import load_model
 from utils import Window, draw_face
 from PIL import ImageFont, ImageDraw, Image
+import kdtree
 
 # global settings
 EPS = 1e-5
@@ -332,16 +333,17 @@ def pcn_detect(img, nets):
     return trans_window(img, imgPad, winlist)
 
 def draw_rpn(img, regions_index):
-    regions_index = list(filter(lambda distance: distance != False, regions_index))
-    min_distance = min(regions_index, key = lambda t: t[1])
-    print(min_distance)
-    rect_x, rect_y, rect_w, rect_h = min_distance[0] # Get coordinate
-    cv2.rectangle(img, (rect_x, rect_y), (rect_x + rect_w, rect_y + rect_h), (0,255,0), 2)
-         
-    # for index in range(len(regions_index)):
-    #     rect_x, rect_y, rect_w, rect_h = regions_index[index][0] # Get coordinate
-    #     cv2.rectangle(img, (rect_x, rect_y), (rect_x + rect_w, rect_y + rect_h), (0,255,0), 2)
-         
+    # regions_index = list(filter(lambda distance: distance != False, regions_index))
+    # min_distance = min(regions_index, key = lambda t: t[1])
+    # print(min_distance)
+    # rect_x, rect_y, rect_w, rect_h = min_distance[0] # Get coordinate
+    # cv2.rectangle(img, (rect_x, rect_y), (rect_x + rect_w, rect_y + rect_h), (0,255,0), 2)
+
+    for index in range(len(regions_index)):
+        if regions_index[index] != False:
+            rect_x, rect_y, rect_w, rect_h = regions_index[index] # Get coordinate
+            cv2.rectangle(img, (rect_x, rect_y), (rect_x + rect_w, rect_y + rect_h), (0,255,0), 2)
+             
 def get_ms_type(img):
     width, height, depth = img.shape
     type_check = 1 if width >= height else 2
@@ -376,15 +378,9 @@ def get_fontsize(text, img):
     return fontsize
 
 
-def calculate_distance(bbox, head):
-    dx = bbox[0] - head[0]
-    dy = bbox[1] - head[1]
-    distance = dx - dy
-    return distance
-
 # Type 1 : Width img >= Height img
 # Type 2 : Height img > Width img
-def check_collide(head, region, distance):
+def check_collide(head, region):
     if region == False:
         return False
     else:
@@ -397,32 +393,59 @@ def check_collide(head, region, distance):
         right = (region[0] + region[2]) - head_x
         bottom = region[1] - (head_y + head_w)
 
-        # region (x,y,w,h)
-        # Head (TopLeft, BottomLeft, BottomRight, TopRight)
-        bbox_tl = (region[0], region[1])
-        bbox_bl = (region[0], region[1] + region[3])
-        bbox_br = (region[0] + region[2], region[1])
-        bbox_tr = (region[0] + region[2], region[1] + region[3])
-
-        d_tl = calculate_distance(bbox_tl, head[0])
-        d_bl = calculate_distance(bbox_bl, head[1])
-        d_br = calculate_distance(bbox_br, head[2])
-        d_tr = calculate_distance(bbox_tr, head[3])
-
-        distance_tmp = math.sqrt(d_tl*d_tl + d_bl*d_bl + d_br*d_br + d_tr*d_tr) # Check distance      
-
-        if (left > 0 or right < 0 or top < 0 or bottom > 0): # and (distance_tmp <= distance):
-            print("Distance tmp : {0}".format(distance_tmp))
-            # return region, distance_tmp # Get region
-            return region ,int(distance_tmp) 
+        if (left > 0 or right < 0 or top < 0 or bottom > 0): 
+            return region
         else:
             return False  # Not get False
 
-def swept_aabb(heads, regions, distance):
+def swept_aabb(heads, regions):
     regions_index = list(map(lambda region: region['rect'], regions))
     for head in heads:
-        regions_index = list(map(lambda region: check_collide(head, region, distance), regions_index))
+        regions_index = list(map(lambda region: check_collide(head, region), regions_index))
     return regions_index
+
+def head_mid_point(head):
+    # Head (TopLeft, BottomLeft, BottomRight, TopRight)
+    mid_point_x = ((head[3][0] - head[0][0]) // 2) + head[0][0]
+    mid_point_y = ((head[1][1] - head[0][1]) // 2) + head[0][1]  
+    return (mid_point_x, mid_point_y)
+
+def region_mid_point(region):
+    # # region (x,y,w,h)
+    mid_point_x = (region[0] + region[2] // 2)
+    mid_point_y = (region[1] + region[3] // 2)
+    return (mid_point_x, mid_point_y)
+
+
+def head_region(heads, regions_index, img):
+    regions_index = list(filter(lambda region: region != False, regions_index))
+    heads_mp = list(map(lambda head: head_mid_point(head), heads))
+    regions_mp = list(map(lambda region: region_mid_point(region), regions_index))
+    kdtree_region = kdtree.create(regions_mp)
+
+    for head_mp in heads_mp:
+        nearestMPPoint = kdtree_region.search_nn(head_mp)
+        nearestMP = nearestMPPoint[0].data
+        cv2.circle(img, nearestMP, 2, (0,255,255), -1)
+
+    # for head_mp in heads_mp:
+    #     cv2.circle(img, head_mp, 2, (0,255,255), -1)
+
+    # for region_mp in regions_mp:
+    #     cv2.circle(img, region_mp, 2, (0,0,255), -1)
+
+
+
+    # head_region = [] 
+    # for head in heads:
+    #     nearestDist = 500000
+    #     nearestObj = None
+    #     for region in regions_index:
+    #         # If distance(head, region) < nearestDist:
+    #             # nearestDist = distance
+    #             # nearestObj = region 
+    #     head_region.append((head, nearestObj))
+
 
 def sampleText(img, text, textSize):
     font = cv2.FONT_HERSHEY_SIMPLEX
@@ -463,11 +486,14 @@ if __name__ == '__main__':
         lst_b = draw_face(img, face)
         lst_head.append(lst_b)
 
+    # print(lst_head)
     # SS
-    img_lbl, regions = selectivesearch.selective_search(img, scale=500, sigma=0.9, min_size=int(min_size))
-    regions_index = swept_aabb(lst_head, regions[:2000], distance)
-    # print(regions[:10])
-    # Draw ss
+    img_lbl, regions = selectivesearch.selective_search(img, scale=200, sigma=0.8, min_size=int(min_size))
+    regions_index = swept_aabb(lst_head, regions[:2000])
+
+    head_region(lst_head, regions_index, img)
+
+
     draw_rpn(img, regions_index)
 
     # Show image
