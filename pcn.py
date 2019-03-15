@@ -384,6 +384,7 @@ def check_collide(head, region):
     if region == False:
         return False
     else:
+
         head_x = head[0][0]
         head_y = head[0][1]
         head_w = head[2][0] - head[0][0]
@@ -427,24 +428,26 @@ def getIndexTuple(tupCheck, listTuple):
 
 # KdTree to find closest box of the object
 def head_region(heads, regions_index, img):
-    
     regions_index = list(filter(lambda region: region != False, regions_index))
     heads_mp = list(map(lambda head: head_mid_point(head), heads))
     regions_mp = list(map(lambda region: region_mid_point(region), regions_index))
     kdtree_region = kdtree.create(regions_mp)
     region_nearest = []
     index_head = 0
+    
     for head_mp in heads_mp:
         nearestMPPoint = kdtree_region.search_nn(head_mp)
         nearestMP = nearestMPPoint[0].data # Get nearest point 
         indexNearestMP = getIndexTuple(nearestMP, regions_mp)
         region_nearest.append((nearestMP, heads[index_head], regions_index[indexNearestMP]))
         index_head += 1
+
     return region_nearest
 
-# def getBoundingBoxText(text, fontSize):
-    # lines = text.split('\n')
-    # max_length_w = max([len(x) for x in lines])
+def getFontScale(img):
+    height, width, depth = img.shape
+    fontScale = (height * width) / (500 * 500)
+    return fontScale
 
 # Random bounding box follow text size
 def randomBoundingBox(img, bb_text, total):
@@ -453,8 +456,6 @@ def randomBoundingBox(img, bb_text, total):
     padding_top = padding_bottom = 50
     height_img, width_img, depth_img = img.shape
     width, height = bb_text[0]
-    print("Image width : {0} - image height : {1}".format(width_img, height_img))
-    print("BB width : {0} - BB height : {1}".format(width, height))
     # Get width and height of text insert
     random_point_x = [random.randint(0 + padding_left, width_img - width - padding_right) for _ in range(total)]
     random_point_y = [random.randint(0 + padding_top, height_img - height - padding_bottom) for _ in range(total)]
@@ -471,7 +472,17 @@ def randomBoundingBox(img, bb_text, total):
 #     width, height = bb[0]
 #     cv2.rectangle(img, (10, 65), (10 + width, 65 + height), (0,255,0), 2)
 
+# def getBoundingBoxText(text, fontSize):
+#     lines = text.split('\n')
+#     max_length_w = max([len(x) for x in lines])
 
+def getTextSize(text, img):
+    lines = text.split('\n')
+    max_length_line = 
+    fontScale = getFontScale(img)
+    bb = cv2.getTextSize(text, fontFace=cv2.FONT_HERSHEY_DUPLEX, fontScale=fontScale, thickness=1)
+    bb = ((bb[0][0] + 20, bb[0][1] + 20), 10)
+        
 if __name__ == '__main__':
     # usage settings
     import sys
@@ -490,7 +501,8 @@ if __name__ == '__main__':
 
     # Detect faces
     faces = pcn_detect(img, nets)
-
+    text = ["Hello friend", "Chieu nay khong co \n mua roi uot tren \n doi bo vai ^^!."]
+    
     # Get head
     lst_head = []
     for face in faces:
@@ -499,15 +511,13 @@ if __name__ == '__main__':
 
     if len(lst_head) >= 0:     
         # Get text and text_size
-        text = "Hello friend"
-        bb = cv2.getTextSize(text, fontFace=cv2.FONT_HERSHEY_DUPLEX, fontScale=1, thickness=1)
-        bb = ((bb[0][0] + 20, bb[0][1] + 20), 10)
-        regions = randomBoundingBox(img, bb, 100)
+        text = "Chieu nay khong co \n mua roi uot tren \n doi bo vai ^^!."
+
+        regions = randomBoundingBox(img, bb, 2000)
 
 
         regions_index = swept_aabb(lst_head, regions)
         regions_index = head_region(lst_head, regions_index, img)
-
 
         draw_rpn(img, regions_index)
 
@@ -528,3 +538,5 @@ if __name__ == '__main__':
 # 3. If one text 2 head, choice the head to speak.
 # 4. Insert right bubble to region and resize follow by bb_size.
 # 5. Checking text for multiple line. How to get bb of this shit. 
+# 6. If text long and multiple. Resize text 
+# 7. If text long -> Not have regions proposal -> Error -> Need fix
