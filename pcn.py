@@ -337,20 +337,21 @@ def draw_rpn(img, regions_index):
     # Tuple (mp, region)
     for index in range(len(regions_index)):
         midpoint_x, mid_point_y = regions_index[index][0]
-        rect_x, rect_y, rect_w, rect_h = regions_index[index][1] # Get coordinate
+        # Head is regions_index[index][1]
+        rect_x, rect_y, rect_w, rect_h = regions_index[index][2] # Get coordinate
         cv2.circle(img, (midpoint_x, mid_point_y), 2, (0,255,255), -1)
         cv2.rectangle(img, (rect_x, rect_y), (rect_x + rect_w, rect_y + rect_h), (0,255,0), 2)
              
 # Get info data about img, minsize - distance - type-check 
 ## Drop not use anymore
-def get_ms_type(img):
-    width, height, depth = img.shape
-    type_check = 1 if width >= height else 2
-    min_size_width = width / 8
-    min_size_height = height / 8
-    min_size =  min_size_width  * min_size_height
-    distance = math.sqrt(min_size_width * min_size_width + min_size_height * min_size_height) # Check distance   
-    return min_size, type_check, distance
+# def get_ms_type(img):
+#     width, height, depth = img.shape
+#     type_check = 1 if width >= height else 2
+#     min_size_width = width / 8
+#     min_size_height = height / 8
+#     min_size =  min_size_width  * min_size_height
+#     distance = math.sqrt(min_size_width * min_size_width + min_size_height * min_size_height) # Check distance   
+#     return min_size, type_check, distance
 
 # Check area resize image follow by ratio
 def check_area(img):
@@ -426,17 +427,19 @@ def getIndexTuple(tupCheck, listTuple):
 
 # KdTree to find closest box of the object
 def head_region(heads, regions_index, img):
+    
     regions_index = list(filter(lambda region: region != False, regions_index))
     heads_mp = list(map(lambda head: head_mid_point(head), heads))
     regions_mp = list(map(lambda region: region_mid_point(region), regions_index))
     kdtree_region = kdtree.create(regions_mp)
     region_nearest = []
+    index_head = 0
     for head_mp in heads_mp:
         nearestMPPoint = kdtree_region.search_nn(head_mp)
         nearestMP = nearestMPPoint[0].data # Get nearest point 
         indexNearestMP = getIndexTuple(nearestMP, regions_mp)
-        region_nearest.append((nearestMP, regions_index[indexNearestMP]))
-
+        region_nearest.append((nearestMP, heads[index_head], regions_index[indexNearestMP]))
+        index_head += 1
     return region_nearest
 
 # def getBoundingBoxText(text, fontSize):
@@ -445,8 +448,9 @@ def head_region(heads, regions_index, img):
 
 # Random bounding box follow text size
 def randomBoundingBox(img, bb_text, total):
-    padding_left = padding_right = 15
-    padding_top = padding_bottom = 15
+    random.seed(30)
+    padding_left = padding_right = 20
+    padding_top = padding_bottom = 50
     height_img, width_img, depth_img = img.shape
     width, height = bb_text[0]
     print("Image width : {0} - image height : {1}".format(width_img, height_img))
@@ -455,16 +459,9 @@ def randomBoundingBox(img, bb_text, total):
     random_point_x = [random.randint(0 + padding_left, width_img - width - padding_right) for _ in range(total)]
     random_point_y = [random.randint(0 + padding_top, height_img - height - padding_bottom) for _ in range(total)]
     random_point = zip(random_point_x, random_point_y)
-    random_bb = list(map(lambda point: (point[0], point[1],width,height \
+    random_bb = list(map(lambda point: (point[0], point[1], width, height \
                             ), random_point))
-    for bb in random_bb:
-        cv2.rectangle(img, (bb[0], bb[1]), (bb[0] + bb[2], bb[1] + bb[3]), (0,255,0), 2)
     return random_bb
-    # for x, y in random_point:
-    #     # cv2.circle(img, (x, y), 2, (0,0,255), -1)
-    #     cv2.rectangle(img, (x, y), (x + width, y + height), (0,255,0), 2)
-
-
 
 # def sampleText(img, text, bb):
 #     font = cv2.FONT_HERSHEY_DUPLEX
@@ -491,21 +488,8 @@ if __name__ == '__main__':
     img = cv2.imread(imgpath)
     img = check_area(img)
 
-    # Get text and text_size
-    text = "Hello friend"
-    # font = get_fontsize(text, img)
-    bb = cv2.getTextSize(text, fontFace=cv2.FONT_HERSHEY_DUPLEX, fontScale=1, thickness=1)
-    
-    regions = randomBoundingBox(img, bb, 100)
-    # Draw text
-    # sampleText(img, text, bb)
-
     # Detect faces
     faces = pcn_detect(img, nets)
-
-    # Get meta data for min_size ss, type_check, distance
-    # min_size, type_check, distance = get_ms_type(img)
-    # print("Distance : {0}".format(distance))
 
     # Get head
     lst_head = []
@@ -513,15 +497,19 @@ if __name__ == '__main__':
         lst_b = draw_face(img, face)
         lst_head.append(lst_b)
 
-    # SS
-    # img_lbl, regions = selectivesearch.selective_search(img, scale=500, sigma=0.5, min_size=int(min_size))
-    # regions_index = swept_aabb(lst_head, regions[:2000])
-    regions_index = swept_aabb(lst_head, regions)
-    print(regions_index)
-    # regions_index = head_region(lst_head, regions_index, img)
+    if len(lst_head) >= 0:     
+        # Get text and text_size
+        text = "Hello friend"
+        bb = cv2.getTextSize(text, fontFace=cv2.FONT_HERSHEY_DUPLEX, fontScale=1, thickness=1)
+        bb = ((bb[0][0] + 20, bb[0][1] + 20), 10)
+        regions = randomBoundingBox(img, bb, 100)
 
 
-    draw_rpn(img, regions_index)
+        regions_index = swept_aabb(lst_head, regions)
+        regions_index = head_region(lst_head, regions_index, img)
+
+
+        draw_rpn(img, regions_index)
 
     # Show image
     cv2.imshow("pytorch-PCN", img)
@@ -530,3 +518,13 @@ if __name__ == '__main__':
     # save image
     name = os.path.basename(imgpath)
     cv2.imwrite('result/ret_{}'.format(name), img)
+
+
+
+# Pseudo code for part-code 
+# 0. Region closest to head and not colide to another region.
+# 1. Return head and region to specific head.
+# 2. Check position-orientation of region to head.
+# 3. If one text 2 head, choice the head to speak.
+# 4. Insert right bubble to region and resize follow by bb_size.
+# 5. Checking text for multiple line. How to get bb of this shit. 

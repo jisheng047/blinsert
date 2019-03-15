@@ -37,10 +37,10 @@ def draw_face(img, face:Window):
     centerX = (x1 + x2) // 2
     centerY = (y1 + y2) // 2
 
-    x1_b = face.x - 8
-    y1_b = face.y - 8
-    x2_b = face.width + x1_b + 15
-    y2_b = face.width + y1_b + 15
+    x1_b = face.x - 13
+    y1_b = face.y - 13
+    x2_b = face.width + x1_b + 25
+    y2_b = face.width + y1_b + 25
 
     # TopLeft - BottomLeft - BottomRight - TopRight
     lst = (x1, y1), (x1, y2), (x2, y2), (x2, y1)
