@@ -8,7 +8,7 @@ from models import load_model
 from utils import Window, draw_face
 from PIL import ImageFont, ImageDraw, Image
 import kdtree
-
+import random
 # global settings
 EPS = 1e-5
 minFace_ = 20 * 1.4
@@ -332,30 +332,30 @@ def pcn_detect(img, nets):
         winlist = smooth_window(winlist)
     return trans_window(img, imgPad, winlist)
 
+# Draw region
 def draw_rpn(img, regions_index):
-    # regions_index = list(filter(lambda distance: distance != False, regions_index))
-    # min_distance = min(regions_index, key = lambda t: t[1])
-    # print(min_distance)
-    # rect_x, rect_y, rect_w, rect_h = min_distance[0] # Get coordinate
-    # cv2.rectangle(img, (rect_x, rect_y), (rect_x + rect_w, rect_y + rect_h), (0,255,0), 2)
-
+    # Tuple (mp, region)
     for index in range(len(regions_index)):
-        if regions_index[index] != False:
-            rect_x, rect_y, rect_w, rect_h = regions_index[index] # Get coordinate
-            cv2.rectangle(img, (rect_x, rect_y), (rect_x + rect_w, rect_y + rect_h), (0,255,0), 2)
+        midpoint_x, mid_point_y = regions_index[index][0]
+        rect_x, rect_y, rect_w, rect_h = regions_index[index][1] # Get coordinate
+        cv2.circle(img, (midpoint_x, mid_point_y), 2, (0,255,255), -1)
+        cv2.rectangle(img, (rect_x, rect_y), (rect_x + rect_w, rect_y + rect_h), (0,255,0), 2)
              
+# Get info data about img, minsize - distance - type-check 
+## Drop not use anymore
 def get_ms_type(img):
     width, height, depth = img.shape
     type_check = 1 if width >= height else 2
-    min_size_width = width / 12
-    min_size_height = height / 12
+    min_size_width = width / 8
+    min_size_height = height / 8
     min_size =  min_size_width  * min_size_height
     distance = math.sqrt(min_size_width * min_size_width + min_size_height * min_size_height) # Check distance   
     return min_size, type_check, distance
 
+# Check area resize image follow by ratio
 def check_area(img):
     height, width, depth = img.shape
-    print("Width {0} - Height {1} - Depth {2}".format(width, height, depth))
+    # print("Width {0} - Height {1} - Depth {2}".format(width, height, depth))
     if width > 1000 :
         ratio = height / width
         width = 500
@@ -368,18 +368,17 @@ def check_area(img):
         img = cv2.resize(img, (int(width) , int(height)))
     return img
 
-def get_fontsize(text, img):
-    fontsize = 1  # starting font size
-    img_fraction = 0.40
-    font = ImageFont.truetype("arial.ttf", 15)
-    while font.getsize(text)[0] < img_fraction*img.shape[0]:
-        fontsize += 1
-        font = ImageFont.truetype("arial.ttf", fontsize)
-    return fontsize
+# def get_fontsize(text, img):
+#     fontsize = 1  # starting font size
+#     img_fraction = 0.40
+#     font = ImageFont.truetype("arial.ttf", 15)
+#     while font.getsize(text)[0] < img_fraction*img.shape[0]:
+#         fontsize += 1
+#         font = ImageFont.truetype("arial.ttf", fontsize)
+#     return font
 
 
-# Type 1 : Width img >= Height img
-# Type 2 : Height img > Width img
+# Check colide swept aabb
 def check_collide(head, region):
     if region == False:
         return False
@@ -398,60 +397,82 @@ def check_collide(head, region):
         else:
             return False  # Not get False
 
+# Check colide swept aabb
 def swept_aabb(heads, regions):
-    regions_index = list(map(lambda region: region['rect'], regions))
+    regions_index = regions
     for head in heads:
         regions_index = list(map(lambda region: check_collide(head, region), regions_index))
     return regions_index
 
+# Mid point of head
 def head_mid_point(head):
     # Head (TopLeft, BottomLeft, BottomRight, TopRight)
     mid_point_x = ((head[3][0] - head[0][0]) // 2) + head[0][0]
     mid_point_y = ((head[1][1] - head[0][1]) // 2) + head[0][1]  
     return (mid_point_x, mid_point_y)
 
+# Mid point of region
 def region_mid_point(region):
     # # region (x,y,w,h)
     mid_point_x = (region[0] + region[2] // 2)
     mid_point_y = (region[1] + region[3] // 2)
     return (mid_point_x, mid_point_y)
 
+# Find midpoint tuple in list of midpoint box
+def getIndexTuple(tupCheck, listTuple):
+    index = [x for x, y in enumerate(listTuple) if (y[0] == tupCheck[0] and \
+                                                    y[1] == tupCheck[1])]
+    return index[0]
 
+# KdTree to find closest box of the object
 def head_region(heads, regions_index, img):
     regions_index = list(filter(lambda region: region != False, regions_index))
     heads_mp = list(map(lambda head: head_mid_point(head), heads))
     regions_mp = list(map(lambda region: region_mid_point(region), regions_index))
     kdtree_region = kdtree.create(regions_mp)
-
+    region_nearest = []
     for head_mp in heads_mp:
         nearestMPPoint = kdtree_region.search_nn(head_mp)
-        nearestMP = nearestMPPoint[0].data
-        cv2.circle(img, nearestMP, 2, (0,255,255), -1)
+        nearestMP = nearestMPPoint[0].data # Get nearest point 
+        indexNearestMP = getIndexTuple(nearestMP, regions_mp)
+        region_nearest.append((nearestMP, regions_index[indexNearestMP]))
 
-    # for head_mp in heads_mp:
-    #     cv2.circle(img, head_mp, 2, (0,255,255), -1)
+    return region_nearest
 
-    # for region_mp in regions_mp:
-    #     cv2.circle(img, region_mp, 2, (0,0,255), -1)
+# def getBoundingBoxText(text, fontSize):
+    # lines = text.split('\n')
+    # max_length_w = max([len(x) for x in lines])
+
+# Random bounding box follow text size
+def randomBoundingBox(img, bb_text, total):
+    padding_left = padding_right = 15
+    padding_top = padding_bottom = 15
+    height_img, width_img, depth_img = img.shape
+    width, height = bb_text[0]
+    print("Image width : {0} - image height : {1}".format(width_img, height_img))
+    print("BB width : {0} - BB height : {1}".format(width, height))
+    # Get width and height of text insert
+    random_point_x = [random.randint(0 + padding_left, width_img - width - padding_right) for _ in range(total)]
+    random_point_y = [random.randint(0 + padding_top, height_img - height - padding_bottom) for _ in range(total)]
+    random_point = zip(random_point_x, random_point_y)
+    random_bb = list(map(lambda point: (point[0], point[1],width,height \
+                            ), random_point))
+    for bb in random_bb:
+        cv2.rectangle(img, (bb[0], bb[1]), (bb[0] + bb[2], bb[1] + bb[3]), (0,255,0), 2)
+    return random_bb
+    # for x, y in random_point:
+    #     # cv2.circle(img, (x, y), 2, (0,0,255), -1)
+    #     cv2.rectangle(img, (x, y), (x + width, y + height), (0,255,0), 2)
 
 
 
-    # head_region = [] 
-    # for head in heads:
-    #     nearestDist = 500000
-    #     nearestObj = None
-    #     for region in regions_index:
-    #         # If distance(head, region) < nearestDist:
-    #             # nearestDist = distance
-    #             # nearestObj = region 
-    #     head_region.append((head, nearestObj))
-
-
-def sampleText(img, text, textSize):
-    font = cv2.FONT_HERSHEY_SIMPLEX
-    font_scale = 1
-    thickness = 1
-    cv2.putText(img,text,(10,65), font, font_scale, (0,0,0), thickness, cv2.LINE_AA)
+# def sampleText(img, text, bb):
+#     font = cv2.FONT_HERSHEY_DUPLEX
+#     font_scale = 1
+#     thickness = 1
+#     cv2.putText(img,text,(10,65), font, font_scale, (0,0,0), thickness, cv2.LINE_AA)
+#     width, height = bb[0]
+#     cv2.rectangle(img, (10, 65), (10 + width, 65 + height), (0,255,0), 2)
 
 
 if __name__ == '__main__':
@@ -465,33 +486,39 @@ if __name__ == '__main__':
 
     # Load model
     nets = load_model()
+
     # Load image and check area for large image
     img = cv2.imread(imgpath)
     img = check_area(img)
+
     # Get text and text_size
-    text = "Hello friend, hello world"
-    font_size = get_fontsize(text, img)
+    text = "Hello friend"
+    # font = get_fontsize(text, img)
+    bb = cv2.getTextSize(text, fontFace=cv2.FONT_HERSHEY_DUPLEX, fontScale=1, thickness=1)
     
+    regions = randomBoundingBox(img, bb, 100)
     # Draw text
-    sampleText(img, text, font_size)
+    # sampleText(img, text, bb)
 
     # Detect faces
     faces = pcn_detect(img, nets)
+
     # Get meta data for min_size ss, type_check, distance
-    min_size, type_check, distance = get_ms_type(img)
-    print("Distance : {0}".format(distance))
+    # min_size, type_check, distance = get_ms_type(img)
+    # print("Distance : {0}".format(distance))
+
     # Get head
     lst_head = []
     for face in faces:
         lst_b = draw_face(img, face)
         lst_head.append(lst_b)
 
-    # print(lst_head)
     # SS
-    img_lbl, regions = selectivesearch.selective_search(img, scale=200, sigma=0.8, min_size=int(min_size))
-    regions_index = swept_aabb(lst_head, regions[:2000])
-
-    head_region(lst_head, regions_index, img)
+    # img_lbl, regions = selectivesearch.selective_search(img, scale=500, sigma=0.5, min_size=int(min_size))
+    # regions_index = swept_aabb(lst_head, regions[:2000])
+    regions_index = swept_aabb(lst_head, regions)
+    print(regions_index)
+    # regions_index = head_region(lst_head, regions_index, img)
 
 
     draw_rpn(img, regions_index)
