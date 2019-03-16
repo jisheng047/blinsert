@@ -341,17 +341,6 @@ def draw_rpn(img, regions_index):
         rect_x, rect_y, rect_w, rect_h = regions_index[index][2] # Get coordinate
         cv2.circle(img, (midpoint_x, mid_point_y), 2, (0,255,255), -1)
         cv2.rectangle(img, (rect_x, rect_y), (rect_x + rect_w, rect_y + rect_h), (0,255,0), 2)
-             
-# Get info data about img, minsize - distance - type-check 
-## Drop not use anymore
-# def get_ms_type(img):
-#     width, height, depth = img.shape
-#     type_check = 1 if width >= height else 2
-#     min_size_width = width / 8
-#     min_size_height = height / 8
-#     min_size =  min_size_width  * min_size_height
-#     distance = math.sqrt(min_size_width * min_size_width + min_size_height * min_size_height) # Check distance   
-#     return min_size, type_check, distance
 
 # Check area resize image follow by ratio
 def check_area(img):
@@ -450,12 +439,29 @@ def getFontScale(img):
     return fontScale
 
 # Random bounding box follow text size
-def randomBoundingBox(img, bb_text, total):
+# def randomBoundingBox(img, bb_text, total):
+#     random.seed(30)
+#     padding_left = padding_right = 20
+#     padding_top = padding_bottom = 50
+#     height_img, width_img, depth_img = img.shape
+#     width, height = bb_text[0]
+#     # Get width and height of text insert
+#     random_point_x = [random.randint(0 + padding_left, width_img - width - padding_right) for _ in range(total)]
+#     random_point_y = [random.randint(0 + padding_top, height_img - height - padding_bottom) for _ in range(total)]
+#     random_point = zip(random_point_x, random_point_y)
+#     random_bb = list(map(lambda point: (point[0], point[1], width, height \
+#                             ), random_point))
+#     return random_bb
+
+
+def randomBoundingBox(img, total):
     random.seed(30)
     padding_left = padding_right = 20
-    padding_top = padding_bottom = 50
+    padding_top = padding_bottom = 20
     height_img, width_img, depth_img = img.shape
-    width, height = bb_text[0]
+    width = int(width_img * 0.6)
+    height = int(height_img * 0.2)
+
     # Get width and height of text insert
     random_point_x = [random.randint(0 + padding_left, width_img - width - padding_right) for _ in range(total)]
     random_point_y = [random.randint(0 + padding_top, height_img - height - padding_bottom) for _ in range(total)]
@@ -463,6 +469,36 @@ def randomBoundingBox(img, bb_text, total):
     random_bb = list(map(lambda point: (point[0], point[1], width, height \
                             ), random_point))
     return random_bb
+
+
+def assignBalloon(img, regions_index):
+    mp_point = regions_index[0]
+    head = regions_index[1]
+    region = regions_index[2]
+
+    x, y, width_r, height_r = region
+    balloon_img = cv2.imread("./sample/1_ss.png")
+    balloon_img = cv2.resize(balloon_img, (int(width_r) , int(height_r)))
+    balloon2gray = cv2.cvtColor(balloon_img, cv2.COLOR_BGR2GRAY)
+    ret, mask = cv2.threshold(balloon2gray, 10, 255, cv2.THRESH_BINARY)
+    mask_inv = cv2.bitwise_not(mask)
+    roi = img[x:x+width_r, y:y+height_r]
+
+    # cv2.imshow("Roi", roi)
+    # cv2.imshow("Balloon img", balloon_img)
+    # cv2.imshow("Image", img)
+    
+    # cv2.waitKey(0)
+    # cv2.destroyAllWindows()
+    img_bg = cv2.bitwise_and(roi, roi, mask=mask_inv)
+    balloon_fg = cv2.bitwise_and(balloon_img, balloon_img, mask=mask)
+
+    dst = cv2.add(img_bg, balloon_fg)
+    img[x:x+width_r, y:y+height_r ] = dst
+
+    cv2.imwrite("./sample/12_crs.png", dst)
+    return img
+
 
 # def sampleText(img, text, bb):
 #     font = cv2.FONT_HERSHEY_DUPLEX
@@ -476,13 +512,14 @@ def randomBoundingBox(img, bb_text, total):
 #     lines = text.split('\n')
 #     max_length_w = max([len(x) for x in lines])
 
-def getTextSize(text, img):
-    lines = text.split('\n')
-    max_length_line = 
-    fontScale = getFontScale(img)
-    bb = cv2.getTextSize(text, fontFace=cv2.FONT_HERSHEY_DUPLEX, fontScale=fontScale, thickness=1)
-    bb = ((bb[0][0] + 20, bb[0][1] + 20), 10)
+# def getTextSize(text, img):
+#     lines = text.split('\n')
+#     max_length_line = 
+#     fontScale = getFontScale(img)
+#     bb = cv2.getTextSize(text, fontFace=cv2.FONT_HERSHEY_DUPLEX, fontScale=fontScale, thickness=1)
+#     bb = ((bb[0][0] + 20, bb[0][1] + 20), 10)
         
+
 if __name__ == '__main__':
     # usage settings
     import sys
@@ -501,8 +538,9 @@ if __name__ == '__main__':
 
     # Detect faces
     faces = pcn_detect(img, nets)
-    text = ["Hello friend", "Chieu nay khong co \n mua roi uot tren \n doi bo vai ^^!."]
-    
+
+    text = "Hello friend"
+
     # Get head
     lst_head = []
     for face in faces:
@@ -511,15 +549,13 @@ if __name__ == '__main__':
 
     if len(lst_head) >= 0:     
         # Get text and text_size
-        text = "Chieu nay khong co \n mua roi uot tren \n doi bo vai ^^!."
-
-        regions = randomBoundingBox(img, bb, 2000)
-
-
+        regions = randomBoundingBox(img, 2000)
         regions_index = swept_aabb(lst_head, regions)
         regions_index = head_region(lst_head, regions_index, img)
-
-        draw_rpn(img, regions_index)
+        regions_index = list((regions_index[0],))
+        assignBalloon(img, regions_index[0]) # Only 1 balloon now
+        print(regions_index)
+        # draw_rpn(img, regions_index)
 
     # Show image
     cv2.imshow("pytorch-PCN", img)
