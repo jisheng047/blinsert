@@ -42,14 +42,22 @@ def draw_face(img, face:Window):
     x2_b = face.width + x1_b + 25
     y2_b = face.width + y1_b + 25
 
+    x1_c = face.x - 30
+    y1_c = face.y - 30
+    x2_c = face.width + x1_c + 59
+    y2_c = face.width + y1_c + 59
+
     # TopLeft - BottomLeft - BottomRight - TopRight
     lst = (x1, y1), (x1, y2), (x2, y2), (x2, y1)
     lst_b = (x1_b, y1_b), (x1_b, y2_b), (x2_b, y2_b), (x2_b, y1_b)
+    lst_c = (x1_c, y1_c), (x1_c, y2_c), (x2_c, y2_c), (x2_c, y1_c)
 
     pointlist = [rotate_point(x, y, centerX, centerY, face.angle) for (x, y) in lst]
     pointlist2 = [rotate_point(x, y, centerX, centerY, face.angle) for (x, y) in lst_b]
+    pointlist3 = [rotate_point(x, y, centerX, centerY, face.angle) for (x, y) in lst_c]
 
-    draw_line(img, pointlist, (255,255,0))
-    draw_line(img, pointlist2, (0,0,255))
+    # draw_line(img, pointlist, (255,255,0))
+    # draw_line(img, pointlist2, (0,0,255))
+    # draw_line(img, pointlist3, (0,0,255))
 
-    return lst_b
+    return lst_b, lst_c

@@ -3,7 +3,7 @@ import numpy as np
 import cv2
 import torch
 import math
-import selectivesearch
+#import selectivesearch
 from models import load_model
 from utils import Window, draw_face
 from PIL import ImageFont, ImageDraw, Image
@@ -70,7 +70,7 @@ def smooth_angle(a, b):
     else:
         return b + (360 - diff) // 2
 
-# use global variable `prelist` to mimic static variable in C++
+# Prelist global variable
 prelist = []
 def smooth_window(winlist):
     global prelist
@@ -100,6 +100,7 @@ def IoU(w1, w2):
     unio = w1.w * w1.h + w2.w * w2.h - intersection
     return intersection / unio
 
+# Non-maximum suppression
 def NMS(winlist, local, threshold):
     length = len(winlist)
     if length == 0:
@@ -134,7 +135,7 @@ def deleteFP(winlist):
     return ret
 
 
-# using if-else to mimic method overload in C++
+# Mimic method
 def set_input(img):
     if type(img) == list:
         img = np.stack(img, axis=0)
@@ -143,7 +144,7 @@ def set_input(img):
     img = img.transpose((0, 3, 1, 2))
     return torch.FloatTensor(img)
 
-
+# Trans window
 def trans_window(img, imgPad, winlist):
     """transfer Window2 to Window1 in winlist"""
     row = (imgPad.shape[0] - img.shape[0]) // 2
@@ -154,6 +155,7 @@ def trans_window(img, imgPad, winlist):
             ret.append(Window(win.x-col, win.y-row, win.w, win.angle, win.conf))
     return ret
 
+# Stage 1
 def stage1(img, imgPad, net, thres):
     row = (imgPad.shape[0] - img.shape[0]) // 2
     col = (imgPad.shape[1] - img.shape[1]) // 2
@@ -188,6 +190,7 @@ def stage1(img, imgPad, net, thres):
         curScale = img.shape[0] / img_resized.shape[0]
     return winlist
 
+# Stage 2
 def stage2(img, img180, net, thres, dim, winlist):
     length = len(winlist)
     if length == 0:
@@ -247,6 +250,7 @@ def stage2(img, img180, net, thres, dim, winlist):
                     ret.append(Window2(x, height-1-(y+w-1), w, w, angle, winlist[i].scale, cls_prob[i, 1].item()))
     return ret
 
+# Stage 3
 def stage3(imgPad, img180, img90, imgNeg90, net, thres, dim, winlist):
     length = len(winlist)
     if length == 0:
@@ -310,7 +314,7 @@ def stage3(imgPad, img180, img90, imgNeg90, net, thres, dim, winlist):
                     ret.append(Window2(width-y-w, x, w, w, -90+angle, winlist[i].scale, cls_prob[i, 1].item()))
     return ret
 
-
+# Detect face
 def detect(img, imgPad, nets):
     img180 = cv2.flip(imgPad, 0)
     img90 = cv2.transpose(imgPad)
@@ -325,6 +329,7 @@ def detect(img, imgPad, nets):
     winlist = deleteFP(winlist)
     return winlist
 
+# Pcn Detect
 def pcn_detect(img, nets):
     imgPad = pad_img(img)
     winlist = detect(img, imgPad, nets)
@@ -358,16 +363,6 @@ def check_area(img):
         img = cv2.resize(img, (int(width) , int(height)))
     return img
 
-# def get_fontsize(text, img):
-#     fontsize = 1  # starting font size
-#     img_fraction = 0.40
-#     font = ImageFont.truetype("arial.ttf", 15)
-#     while font.getsize(text)[0] < img_fraction*img.shape[0]:
-#         fontsize += 1
-#         font = ImageFont.truetype("arial.ttf", fontsize)
-#     return font
-
-
 # Check colide swept aabb
 def check_collide(head, region):
     if region == False:
@@ -399,7 +394,7 @@ def swept_aabb(heads, regions):
 def head_mid_point(head):
     # Head (TopLeft, BottomLeft, BottomRight, TopRight)
     mid_point_x = ((head[3][0] - head[0][0]) // 2) + head[0][0]
-    mid_point_y = ((head[1][1] - head[0][1]) // 2) + head[0][1]  
+    mid_point_y = ((head[1][1] - head[0][1]) // 4) + head[0][1]  
     return (mid_point_x, mid_point_y)
 
 # Mid point of region
@@ -417,7 +412,6 @@ def getIndexTuple(tupCheck, listTuple):
 
 # KdTree to find closest box of the object
 def head_region(heads, regions_index, img):
-    regions_index = list(filter(lambda region: region != False, regions_index))
     heads_mp = list(map(lambda head: head_mid_point(head), heads))
     regions_mp = list(map(lambda region: region_mid_point(region), regions_index))
     kdtree_region = kdtree.create(regions_mp)
@@ -438,29 +432,14 @@ def getFontScale(img):
     fontScale = (height * width) / (500 * 500)
     return fontScale
 
-# Random bounding box follow text size
-# def randomBoundingBox(img, bb_text, total):
-#     random.seed(30)
-#     padding_left = padding_right = 20
-#     padding_top = padding_bottom = 50
-#     height_img, width_img, depth_img = img.shape
-#     width, height = bb_text[0]
-#     # Get width and height of text insert
-#     random_point_x = [random.randint(0 + padding_left, width_img - width - padding_right) for _ in range(total)]
-#     random_point_y = [random.randint(0 + padding_top, height_img - height - padding_bottom) for _ in range(total)]
-#     random_point = zip(random_point_x, random_point_y)
-#     random_bb = list(map(lambda point: (point[0], point[1], width, height \
-#                             ), random_point))
-#     return random_bb
-
-
 def randomBoundingBox(img, total):
     random.seed(30)
     padding_left = padding_right = 20
     padding_top = padding_bottom = 20
     height_img, width_img, depth_img = img.shape
-    width = int(width_img * 0.6)
-    height = int(height_img * 0.2)
+    # width = int(width_img * 0.5)
+    width = int(width_img * 0.3)
+    height = int(height_img * 0.23)
 
     # Get width and height of text insert
     random_point_x = [random.randint(0 + padding_left, width_img - width - padding_right) for _ in range(total)]
@@ -470,109 +449,242 @@ def randomBoundingBox(img, total):
                             ), random_point))
     return random_bb
 
+def checkSafeZone(img, mp_region, head, side):
+    head_point_1, head_point_2, head_point_3, head_point_4 = head
+    offset_height_head = (head_point_3[1] - head_point_1[1]) / 12
+    offset_width_head = (head_point_3[1] - head_point_1[1]) / 12
+    if side == "HORIZONTAL":
+        sz_hor_b1 = int(head_point_1[1] + 4 * offset_height_head)
+        sz_hor_b2 = int(head_point_1[1] + 8 * offset_height_head)
+        if mp_region[1] < sz_hor_b1:
+            return 0
+        elif mp_region[1] > sz_hor_b2:
+            return 2
+        else:
+            return 1
+    elif side == "VERTICAL":
+        sz_ver_b1 = int(head_point_1[0] + 4 * offset_width_head)
+        sz_ver_b2 = int(head_point_1[0] + 8 * offset_width_head)
+        if mp_region[0] < sz_ver_b1:
+            return 0
+        elif mp_region[0] > sz_ver_b2:
+            return 2
+        else:
+            return 1
+
+def findBalloonTail(img, region, head):
+    x, y, width_r, height_r = region
+
+    region_point_1 = (x,y)
+    region_point_2 = (x + width_r, y)
+    region_point_3 = (x + width_r, y + height_r)
+    region_point_4 = (x, y + height_r)
+
+    head_point_1, head_point_2, head_point_3, head_point_4 = head
+    tail_firstb_x, tail_firstb_y, tail_lastb_x, tail_lastb_y = (0,0,0,0)
+    # balloon_tail = cv2.imread("./sample/tail/left_0.png")
+    balloon_tail = cv2.imread("./sample/tail2/top_0.png")
+    mp_region = region_mid_point(region)
+    mp_head = head_mid_point(head)
+    # cv2.circle(img, mp_region, 2, (0,0,255), -1)
+    # cv2.circle(img, mp_head, 2, (0,0,255), -1)
+
+    # check right - x  region < left head => LEFT:
+    # check bottom - y region < top head => TOP:
+    # check top - y region > bottom head => BOTTOM:
+    # check left - x region > right head => RIGHT
+    if region_point_2[0]  < head_point_1[0]: # LEFT
+
+        sz_index = checkSafeZone(img, mp_region, head, "HORIZONTAL")
+        # balloon_tail = cv2.imread("./sample/tail/left_{0}.png".format(str(sz_index)))
+        balloon_tail = cv2.imread("./sample/tail2/left_{0}.png".format(str(sz_index)))
+        height_t, width_t, depth_t = balloon_tail.shape
+        aspect_ratio_t = height_t / width_t
+
+        width_t = abs(head_point_1[0] - region_point_3[0])
+        height_t = int(width_t * aspect_ratio_t)
+
+
+
+        if sz_index == 1:
+            tail_firstb_y = int(mp_region[1] - int(height_t / 2))
+        elif sz_index == 0:
+            tail_firstb_y = int(mp_region[1] - int(height_t / 2) + height_t * 0.3)
+        elif sz_index == 2:
+            tail_firstb_y = int(mp_region[1] - int(height_t / 2) - height_t * 0.3)
+
+        tail_firstb_x = int(region_point_2[0])
+        tail_lastb_x = int(region_point_2[0] + width_t)
+        tail_lastb_y = int(tail_firstb_y + height_t)
+        print("LEFT")
+        
+    
+    elif region_point_1[0] > head_point_3[0]: # RIGHT
+
+        sz_index = checkSafeZone(img, mp_region, head, "HORIZONTAL")
+        # balloon_tail = cv2.imread("./sample/tail/right_{0}.png".format(str(sz_index)))
+        balloon_tail = cv2.imread("./sample/tail2/right_{0}.png".format(str(sz_index)))
+        height_t, width_t, depth_t = balloon_tail.shape
+        aspect_ratio_t = height_t / width_t
+
+        width_t = abs(head_point_3[0] - region_point_1[0])
+        height_t = int(width_t * aspect_ratio_t)
+
+        if sz_index == 1:
+            tail_firstb_y = int(mp_region[1] - int(height_t / 2))
+        elif sz_index == 0:
+            tail_firstb_y = int(mp_region[1] - int(height_t / 2) + height_t * 0.3)
+        elif sz_index == 2:
+            tail_firstb_y = int(mp_region[1] - int(height_t / 2) - height_t * 0.3)
+
+
+
+        tail_firstb_x = int(head_point_3[0])
+        tail_lastb_x = int(head_point_3[0] + width_t)
+        tail_lastb_y = int(tail_firstb_y + height_t)
+
+    elif region_point_3[1] < head_point_1[1]: # TOP
+        
+        sz_index = checkSafeZone(img, mp_region, head, "VERTICAL")
+        # balloon_tail = cv2.imread("./sample/tail/top_{0}.png".format(str(sz_index)))
+        balloon_tail = cv2.imread("./sample/tail2/top_{0}.png".format(str(sz_index)))
+        height_t, width_t, depth_t = balloon_tail.shape
+        aspect_ratio_t = height_t / width_t
+
+        height_t = abs(region_point_3[1] - head_point_1[1])
+        width_t = int(height_t / aspect_ratio_t)
+
+        if sz_index == 1:
+            tail_firstb_x = int(mp_region[0] - int(width_t / 2))
+        elif sz_index == 0:
+            tail_firstb_x = int(mp_region[0] - int(width_t / 2) + width_t * 0.3)
+        elif sz_index == 2:
+            tail_firstb_x = int(mp_region[0] - int(width_t / 2) - width_t * 0.3)
+
+        tail_firstb_y = int(region_point_3[1])
+        tail_lastb_x = int(tail_firstb_x + width_t)
+        tail_lastb_y = int(region_point_3[1] + height_t)
+        print("TOP")
+
+
+    elif region_point_2[1] > head_point_4[1]: # BOTTOM
+        
+        sz_index = checkSafeZone(img, mp_region, head, "VERTICAL")
+        # balloon_tail = cv2.imread("./sample/tail/bottom_{0}.png".format(str(sz_index)))
+        balloon_tail = cv2.imread("./sample/tail2/bottom_{0}.png".format(str(sz_index)))
+        height_t, width_t, depth_t = balloon_tail.shape
+        aspect_ratio_t = height_t / width_t
+
+        height_t = abs(region_point_1[1] - head_point_3[1])
+        width_t = int(height_t / aspect_ratio_t)
+
+
+        if sz_index == 1:
+            tail_firstb_x = int(mp_region[0] - int(width_t / 2))
+        elif sz_index == 0:
+            tail_firstb_x = int(mp_region[0] - int(width_t / 2) + width_t * 0.3)
+        elif sz_index == 2:
+            tail_firstb_x = int(mp_region[0] - int(width_t / 2) - width_t * 0.3)
+
+        tail_firstb_y = int(head_point_3[1])
+        tail_lastb_x = int(tail_firstb_x + width_t)
+        tail_lastb_y = int(head_point_3[1] + height_t)
+        print("BOTTOM")
+
+    balloon_tail = cv2.resize(balloon_tail, (int(width_t) , int(height_t)))
+    balloon2gray = cv2.cvtColor(balloon_tail, cv2.COLOR_BGR2GRAY)
+    ret, mask = cv2.threshold(balloon2gray, 10, 255, cv2.THRESH_BINARY)
+    mask_inv = cv2.bitwise_not(mask)
+
+    roi = img[tail_firstb_y:tail_lastb_y, tail_firstb_x:tail_lastb_x]
+
+    img_bg = cv2.bitwise_and(roi, roi, mask=mask_inv)
+    balloon_fg = cv2.bitwise_and(balloon_tail, balloon_tail, mask=mask)
+
+    dst = cv2.add(img_bg, balloon_fg)
+    img[tail_firstb_y:tail_lastb_y, tail_firstb_x:tail_lastb_x] = dst
+
+    return img
 
 def assignBalloon(img, regions_index):
     mp_point = regions_index[0]
     head = regions_index[1]
     region = regions_index[2]
+    head_mp_point = head_mid_point(head)
+
+    x_mp_point, y_mp_point = mp_point
+    x_head_mp_point, y_head_mp_point = head_mp_point
 
     x, y, width_r, height_r = region
-    balloon_img = cv2.imread("./sample/1_ss.png")
+
+    balloon_img = cv2.imread("./sample/cloud.png")
+    
     balloon_img = cv2.resize(balloon_img, (int(width_r) , int(height_r)))
     balloon2gray = cv2.cvtColor(balloon_img, cv2.COLOR_BGR2GRAY)
     ret, mask = cv2.threshold(balloon2gray, 10, 255, cv2.THRESH_BINARY)
     mask_inv = cv2.bitwise_not(mask)
-    roi = img[x:x+width_r, y:y+height_r]
+    roi = img[y:y+height_r,x:x+width_r]
 
-    # cv2.imshow("Roi", roi)
-    # cv2.imshow("Balloon img", balloon_img)
-    # cv2.imshow("Image", img)
-    
-    # cv2.waitKey(0)
-    # cv2.destroyAllWindows()
     img_bg = cv2.bitwise_and(roi, roi, mask=mask_inv)
     balloon_fg = cv2.bitwise_and(balloon_img, balloon_img, mask=mask)
 
     dst = cv2.add(img_bg, balloon_fg)
-    img[x:x+width_r, y:y+height_r ] = dst
+    img[y:y+height_r,x:x+width_r] = dst
 
-    cv2.imwrite("./sample/12_crs.png", dst)
+    img = findBalloonTail(img, region, head)
+
     return img
 
+def calculateHeadArea(head):
+    point1, point2, point3, point4 = head
+    width_head = int(point2[0] - point1[0])
+    height_head = int(point3[1] - point2[1])
+    area = width_head * height_head
+    return area
 
-# def sampleText(img, text, bb):
-#     font = cv2.FONT_HERSHEY_DUPLEX
-#     font_scale = 1
-#     thickness = 1
-#     cv2.putText(img,text,(10,65), font, font_scale, (0,0,0), thickness, cv2.LINE_AA)
-#     width, height = bb[0]
-#     cv2.rectangle(img, (10, 65), (10 + width, 65 + height), (0,255,0), 2)
-
-# def getBoundingBoxText(text, fontSize):
-#     lines = text.split('\n')
-#     max_length_w = max([len(x) for x in lines])
-
-# def getTextSize(text, img):
-#     lines = text.split('\n')
-#     max_length_line = 
-#     fontScale = getFontScale(img)
-#     bb = cv2.getTextSize(text, fontFace=cv2.FONT_HERSHEY_DUPLEX, fontScale=fontScale, thickness=1)
-#     bb = ((bb[0][0] + 20, bb[0][1] + 20), 10)
-        
+def findLargeHead(lst_head):
+    head_area = list(map(lambda head: calculateHeadArea(head),lst_head))
+    index = head_area.index(max(head_area))
+    return index
+    # Return index of head
 
 if __name__ == '__main__':
-    # usage settings
-    import sys
-    if len(sys.argv) != 2:
-        print("Usage: python3 pcn.py path/to/img")
-        sys.exit()
-    else:
-        imgpath = sys.argv[1]
-
-    # Load model
     nets = load_model()
 
     # Load image and check area for large image
-    img = cv2.imread(imgpath)
-    img = check_area(img)
+    files = os.listdir("./balloon_ta/")
+    img_paths = list(map(lambda name_file: "./balloon_ta/" + name_file, files))
+    for imgpath in img_paths:
+        img = cv2.imread(imgpath)
+        img = check_area(img)
 
-    # Detect faces
-    faces = pcn_detect(img, nets)
+        # Detect faces
+        faces = pcn_detect(img, nets)
 
-    text = "Hello friend"
+        # Get head
+        lst_head = []
+        lst_safezone = []
+        for face in faces:
+            lst_b, lst_c = draw_face(img, face)
+            lst_head.append(lst_b)
+            lst_safezone.append(lst_c)
 
-    # Get head
-    lst_head = []
-    for face in faces:
-        lst_b = draw_face(img, face)
-        lst_head.append(lst_b)
+        if len(lst_head) > 0:   
+            print(imgpath) 
+            # Get text and text_size
+            regions = randomBoundingBox(img, 2000)
+            # regions_index = swept_aabb(lst_head, regions)
+            regions_index = swept_aabb(lst_safezone, regions)
+            regions_index = list(filter(lambda region: region != False, regions_index))
+            if len(regions_index) > 0:
+                # KdTree
+                regions_index = head_region(lst_head, regions_index, img)
+                # Only 1 head - largest head
+                index_head = findLargeHead(lst_head)
+                regions_index = list((regions_index[index_head],))
+                assignBalloon(img, regions_index[0]) # Only 1 balloon now
+                # draw_rpn(img, regions_index)
 
-    if len(lst_head) >= 0:     
-        # Get text and text_size
-        regions = randomBoundingBox(img, 2000)
-        regions_index = swept_aabb(lst_head, regions)
-        regions_index = head_region(lst_head, regions_index, img)
-        regions_index = list((regions_index[0],))
-        assignBalloon(img, regions_index[0]) # Only 1 balloon now
-        print(regions_index)
-        # draw_rpn(img, regions_index)
+        name = os.path.basename(imgpath)
+        cv2.imwrite('result2/ret_{}'.format(name), img)
 
-    # Show image
-    cv2.imshow("pytorch-PCN", img)
-    cv2.waitKey(0)
-    cv2.destroyAllWindows()
-    # save image
-    name = os.path.basename(imgpath)
-    cv2.imwrite('result/ret_{}'.format(name), img)
-
-
-
-# Pseudo code for part-code 
-# 0. Region closest to head and not colide to another region.
-# 1. Return head and region to specific head.
-# 2. Check position-orientation of region to head.
-# 3. If one text 2 head, choice the head to speak.
-# 4. Insert right bubble to region and resize follow by bb_size.
-# 5. Checking text for multiple line. How to get bb of this shit. 
-# 6. If text long and multiple. Resize text 
-# 7. If text long -> Not have regions proposal -> Error -> Need fix
